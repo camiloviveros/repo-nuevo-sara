@@ -46,12 +46,15 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
+		<!-- DEVTOOLS ELIMINADO COMPLETAMENTE PARA ESTABILIDAD -->
+		<!-- 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-devtools</artifactId>
 			<scope>runtime</scope>
 			<optional>true</optional>
 		</dependency>
+		-->
 
 		<!-- Base de datos -->
 		<dependency>
@@ -136,6 +139,12 @@
 							<artifactId>lombok</artifactId>
 						</exclude>
 					</excludes>
+					<!-- Configuración para estabilidad en producción -->
+					<jvmArguments>
+						-Dspring.profiles.active=prod
+						-Dspring.devtools.restart.enabled=false
+						-Dspring.devtools.livereload.enabled=false
+					</jvmArguments>
 				</configuration>
 			</plugin>
 		</plugins>
