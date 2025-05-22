@@ -17,10 +17,11 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 
@@ -35,19 +36,26 @@ public class FileWatcherService {
     private static final String FILE_NAME = "detections.json";
     private static final long FILE_PROCESSING_DELAY_MS = 1000;
     
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
     private final Map<String, LocalDateTime> pendingFiles = new ConcurrentHashMap<>();
-    private volatile boolean isWatching = true;
+    private volatile boolean isWatching = false;
 
-    @PostConstruct
-    public void init() {
-        logger.info("🚀 Iniciando FileWatcherService...");
+    /**
+     * Se ejecuta DESPUÉS de que la aplicación esté completamente inicializada
+     * Esto evita problemas de dependencias circulares o beans no inicializados
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        logger.info("🚀 Aplicación completamente iniciada. Configurando FileWatcherService...");
         
-        // NO cargar datos iniciales para evitar que falle el arranque
-        // Solo iniciar el monitoreo de archivos de forma asíncrona
-        scheduler.schedule(this::startWatching, 5, TimeUnit.SECONDS);
-        
-        logger.info("✅ FileWatcherService iniciado correctamente");
+        // Dar tiempo extra para que todo esté listo
+        scheduler.schedule(() -> {
+            try {
+                startFileWatching();
+            } catch (Exception e) {
+                logger.warn("⚠️ Error iniciando FileWatcher (no crítico): {}", e.getMessage());
+            }
+        }, 3, TimeUnit.SECONDS);
     }
 
     @PreDestroy
@@ -59,21 +67,24 @@ public class FileWatcherService {
             if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
                 scheduler.shutdownNow();
             }
+            logger.info("✅ FileWatcherService cerrado correctamente");
         } catch (InterruptedException e) {
             scheduler.shutdownNow();
             Thread.currentThread().interrupt();
         }
     }
 
-    private void startWatching() {
+    private void startFileWatching() {
         try {
-            // Intentar cargar datos iniciales DESPUÉS del arranque
+            // Primero intentar cargar datos existentes
             loadInitialDataSafely();
             
-            // Iniciar monitoreo de archivos
-            watchFileChanges();
+            // Luego iniciar el monitoreo
+            startWatchingAsync();
+            
+            logger.info("✅ FileWatcherService iniciado correctamente");
         } catch (Exception e) {
-            logger.warn("⚠️ Error iniciando monitoreo de archivos: {}", e.getMessage());
+            logger.warn("⚠️ Error en startFileWatching: {}", e.getMessage());
         }
     }
 
@@ -82,83 +93,108 @@ public class FileWatcherService {
             String fullPath = DIRECTORY_PATH + "/" + FILE_NAME;
             java.io.File file = new java.io.File(fullPath);
             
-            if (file.exists() && file.canRead()) {
-                logger.info("📂 Archivo de detecciones encontrado: {}", fullPath);
+            if (file.exists() && file.canRead() && file.length() > 0) {
+                logger.info("📂 Cargando datos iniciales desde: {}", fullPath);
                 jsonLoader.loadJsonAndSaveToDbSafely(fullPath);
+                logger.info("✅ Datos iniciales cargados exitosamente");
             } else {
-                logger.info("📂 Archivo de detecciones no encontrado o no legible: {}", fullPath);
+                logger.info("📂 No se encontraron datos iniciales en: {}", fullPath);
             }
         } catch (Exception e) {
-            logger.warn("⚠️ Error cargando datos iniciales (continuando con el arranque): {}", e.getMessage());
+            logger.warn("⚠️ Error cargando datos iniciales: {}", e.getMessage());
         }
     }
 
-    @Async
-    public void watchFileChanges() {
+    @Async("taskExecutor")
+    public void startWatchingAsync() {
+        if (isWatching) {
+            logger.info("🔍 FileWatcher ya está ejecutándose");
+            return;
+        }
+
+        isWatching = true;
+        logger.info("🔍 Iniciando monitoreo de archivos...");
+
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
             Path path = Paths.get(DIRECTORY_PATH);
             
+            // Crear directorio si no existe
             if (!path.toFile().exists()) {
                 logger.info("📁 Creando directorio: {}", path.toAbsolutePath());
                 path.toFile().mkdirs();
             }
             
+            // Registrar eventos de watch
             path.register(watchService, 
                          StandardWatchEventKinds.ENTRY_CREATE, 
                          StandardWatchEventKinds.ENTRY_MODIFY);
 
-            logger.info("🔍 Observando cambios en: {}", path.toAbsolutePath());
+            logger.info("🔍 Monitoreando: {}", path.toAbsolutePath());
 
-            while (isWatching) {
-                WatchKey key;
-                try {
-                    key = watchService.poll(1, TimeUnit.SECONDS);
-                    if (key == null) {
-                        continue;
-                    }
-                } catch (InterruptedException e) {
-                    logger.info("Monitoreo de archivos interrumpido.");
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-
-                for (WatchEvent<?> event : key.pollEvents()) {
-                    WatchEvent.Kind<?> kind = event.kind();
-                    
-                    if (kind == StandardWatchEventKinds.OVERFLOW) {
-                        continue;
-                    }
-                    
-                    Path changedFile = (Path) event.context();
-
-                    if (changedFile.toString().equals(FILE_NAME)) {
-                        logger.info("📄 Archivo {} {}", FILE_NAME, 
-                                  (kind == StandardWatchEventKinds.ENTRY_MODIFY ? "modificado" : "creado"));
-
-                        scheduleFileProcessing(DIRECTORY_PATH + "/" + FILE_NAME);
-                    }
-                }
-
-                boolean valid = key.reset();
-                if (!valid) {
-                    logger.warn("WatchKey inválido. Terminando observación.");
-                    break;
-                }
-            }
+            // Loop principal de monitoreo
+            watchLoop(watchService);
 
         } catch (IOException e) {
-            logger.error("Error configurando el monitoreo de archivos: {}", e.getMessage());
+            logger.error("❌ Error configurando monitoreo de archivos: {}", e.getMessage());
         } catch (Exception e) {
-            logger.error("Error inesperado en el monitoreo de archivos: {}", e.getMessage());
+            logger.error("❌ Error inesperado en monitoreo: {}", e.getMessage());
+        } finally {
+            isWatching = false;
+            logger.info("🔍 Monitoreo de archivos finalizado");
         }
-        
-        logger.info("🔍 Monitoreo de archivos finalizado");
+    }
+
+    private void watchLoop(WatchService watchService) {
+        while (isWatching) {
+            WatchKey key;
+            try {
+                // Esperar por eventos con timeout
+                key = watchService.poll(2, TimeUnit.SECONDS);
+                if (key == null) {
+                    continue; // No hay eventos, continúa el loop
+                }
+            } catch (InterruptedException e) {
+                logger.info("⏸️ Monitoreo interrumpido");
+                Thread.currentThread().interrupt();
+                break;
+            }
+
+            // Procesar eventos
+            processWatchEvents(key);
+
+            // Reset del key
+            boolean valid = key.reset();
+            if (!valid) {
+                logger.warn("⚠️ WatchKey inválido. Finalizando monitoreo.");
+                break;
+            }
+        }
+    }
+
+    private void processWatchEvents(WatchKey key) {
+        for (WatchEvent<?> event : key.pollEvents()) {
+            WatchEvent.Kind<?> kind = event.kind();
+            
+            if (kind == StandardWatchEventKinds.OVERFLOW) {
+                continue;
+            }
+            
+            Path changedFile = (Path) event.context();
+
+            if (changedFile.toString().equals(FILE_NAME)) {
+                String eventType = (kind == StandardWatchEventKinds.ENTRY_MODIFY) ? "modificado" : "creado";
+                logger.info("📄 Archivo {} {}", FILE_NAME, eventType);
+
+                scheduleFileProcessing(DIRECTORY_PATH + "/" + FILE_NAME);
+            }
+        }
     }
 
     private void scheduleFileProcessing(String filePath) {
         LocalDateTime now = LocalDateTime.now();
         pendingFiles.put(filePath, now);
         
+        // Programar procesamiento con delay para evitar múltiples procesamiento del mismo archivo
         scheduler.schedule(() -> {
             try {
                 LocalDateTime eventTime = pendingFiles.get(filePath);
@@ -167,7 +203,7 @@ public class FileWatcherService {
                     pendingFiles.remove(filePath);
                 }
             } catch (Exception e) {
-                logger.error("❌ Error en procesamiento programado del archivo: {}", e.getMessage());
+                logger.error("❌ Error en procesamiento programado: {}", e.getMessage());
                 pendingFiles.remove(filePath);
             }
         }, FILE_PROCESSING_DELAY_MS, TimeUnit.MILLISECONDS);
@@ -179,21 +215,27 @@ public class FileWatcherService {
             
             java.io.File file = new java.io.File(filePath);
             if (!file.exists() || !file.canRead()) {
-                logger.warn("⚠️ El archivo no existe o no es legible: {}", filePath);
+                logger.warn("⚠️ Archivo no disponible: {}", filePath);
+                return;
+            }
+            
+            if (file.length() == 0) {
+                logger.warn("⚠️ Archivo vacío: {}", filePath);
                 return;
             }
             
             jsonLoader.loadJsonAndSaveToDbSafely(filePath);
-            logger.info("✅ Datos actualizados en la base de datos desde: {}", filePath);
+            logger.info("✅ Archivo procesado exitosamente: {}", filePath);
             
         } catch (Exception e) {
             logger.error("❌ Error procesando archivo {}: {}", filePath, e.getMessage());
         }
     }
 
+    // Métodos públicos para control manual
     public void forceProcessFile() {
         String fullPath = DIRECTORY_PATH + "/" + FILE_NAME;
-        logger.info("🔧 Forzando procesamiento inmediato de: {}", fullPath);
+        logger.info("🔧 Procesamiento manual de: {}", fullPath);
         processFile(fullPath);
     }
 
@@ -208,6 +250,18 @@ public class FileWatcherService {
         status.put("fileName", FILE_NAME);
         status.put("pendingFiles", pendingFiles.size());
         status.put("schedulerActive", !scheduler.isShutdown());
+        status.put("lastCheck", LocalDateTime.now().toString());
         return status;
+    }
+
+    public void restartWatching() {
+        logger.info("🔄 Reiniciando FileWatcher...");
+        if (isWatching) {
+            isWatching = false;
+            // Esperar a que termine el loop actual
+            scheduler.schedule(() -> startWatchingAsync(), 2, TimeUnit.SECONDS);
+        } else {
+            startWatchingAsync();
+        }
     }
 }

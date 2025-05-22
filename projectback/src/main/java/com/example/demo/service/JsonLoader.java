@@ -1,12 +1,14 @@
 package com.example.demo.service;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,12 +34,12 @@ public class JsonLoader {
     private String filePath;
 
     @Transactional
-    public void loadJsonAndSaveToDb() throws Exception {
+    public void loadJsonAndSaveToDb() throws IOException, DataAccessException {
         loadJsonAndSaveToDb(filePath);
     }
 
     @Transactional
-    public void loadJsonAndSaveToDb(String customFilePath) throws Exception {
+    public void loadJsonAndSaveToDb(String customFilePath) throws IOException, DataAccessException {
         File jsonFile = new File(customFilePath);
         if (!jsonFile.exists()) {
             logger.error("❌ El archivo JSON no existe: {}", customFilePath);
@@ -94,8 +96,17 @@ public class JsonLoader {
             logger.info("   ✅ Detecciones procesadas: {}", detections.size());
             logger.info("   💾 Registros en BD: {}", finalCount);
             
-        } catch (Exception e) {
-            logger.error("❌ Error al cargar el archivo JSON: {}", e.getMessage(), e);
+        } catch (JsonProcessingException e) {
+            logger.error("❌ Error procesando JSON: {}", e.getMessage(), e);
+            throw e;
+        } catch (IOException e) {
+            logger.error("❌ Error de E/S al cargar el archivo JSON: {}", e.getMessage(), e);
+            throw e;
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos: {}", e.getMessage(), e);
+            throw e;
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime al cargar JSON: {}", e.getMessage(), e);
             throw e;
         }
     }
@@ -106,8 +117,12 @@ public class JsonLoader {
     public void loadJsonAndSaveToDbSafely(String customFilePath) {
         try {
             loadJsonAndSaveToDb(customFilePath);
-        } catch (Exception e) {
-            logger.warn("⚠️ Error cargando JSON (no crítico): {}", e.getMessage());
+        } catch (IOException e) {
+            logger.warn("⚠️ Error de E/S cargando JSON (no crítico): {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.warn("⚠️ Error de acceso a datos cargando JSON (no crítico): {}", e.getMessage());
+        } catch (RuntimeException e) {
+            logger.warn("⚠️ Error de runtime cargando JSON (no crítico): {}", e.getMessage());
         }
     }
 
@@ -123,7 +138,7 @@ public class JsonLoader {
                 .avgSpeedByLane(safeWriteValueAsString(detectionJson.getAvg_speed_by_lane()))
                 .build();
                 
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             logger.error("❌ Error procesando detección con timestamp_ms {}: {}", 
                        detectionJson.getTimestamp_ms(), e.getMessage());
             return null;
@@ -142,8 +157,10 @@ public class JsonLoader {
                 detectionRepository.saveAll(batch);
                 processedCount += batch.size();
                 logger.debug("💾 Lote guardado: {} - {} ({} registros)", i + 1, endIndex, batch.size());
-            } catch (Exception e) {
-                logger.error("❌ Error guardando lote {}-{}: {}", i + 1, endIndex, e.getMessage());
+            } catch (DataAccessException e) {
+                logger.error("❌ Error de acceso a datos guardando lote {}-{}: {}", i + 1, endIndex, e.getMessage());
+            } catch (RuntimeException e) {
+                logger.error("❌ Error de runtime guardando lote {}-{}: {}", i + 1, endIndex, e.getMessage());
             }
         }
         
@@ -180,8 +197,10 @@ public class JsonLoader {
             
             logger.info("✅ Verificación de integridad completada");
             
-        } catch (Exception e) {
-            logger.error("❌ Error verificando integridad de datos: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos verificando integridad: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime verificando integridad de datos: {}", e.getMessage());
         }
     }
 
@@ -196,20 +215,34 @@ public class JsonLoader {
             long countAfter = detectionRepository.count();
             logger.info("✅ Base de datos limpiada. Registros restantes: {}", countAfter);
             
-        } catch (Exception e) {
-            logger.error("❌ Error limpiando base de datos: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos limpiando base de datos: {}", e.getMessage());
             throw new RuntimeException("Error limpiando base de datos", e);
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime limpiando base de datos: {}", e.getMessage());
+            throw e;
         }
     }
 
     @Transactional
-    public void forceReload() throws Exception {
+    public void forceReload() throws IOException, DataAccessException {
         logger.info("🔄 Iniciando recarga forzada de datos...");
         
-        clearDatabase();
-        loadJsonAndSaveToDb();
-        verifyDataIntegrity();
-        
-        logger.info("✅ Recarga forzada completada");
+        try {
+            clearDatabase();
+            loadJsonAndSaveToDb();
+            verifyDataIntegrity();
+            
+            logger.info("✅ Recarga forzada completada");
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en recarga forzada: {}", e.getMessage());
+            throw e;
+        } catch (IOException e) {
+            logger.error("❌ Error de E/S en recarga forzada: {}", e.getMessage());
+            throw e;
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en recarga forzada: {}", e.getMessage());
+            throw e;
+        }
     }
 }

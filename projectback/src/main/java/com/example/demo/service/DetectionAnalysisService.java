@@ -2,11 +2,13 @@ package com.example.demo.service;
 
 import com.example.demo.entity.Detection;
 import com.example.demo.repository.DetectionRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -62,8 +64,8 @@ public class DetectionAnalysisService {
                             }
                         }
                     }
-                } catch (Exception e) {
-                    logger.debug("⚠️ Error procesando detección ID {}: {}", detection.getId(), e.getMessage());
+                } catch (RuntimeException e) {
+                    logger.debug("⚠️ Error de runtime procesando detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
@@ -75,8 +77,11 @@ public class DetectionAnalysisService {
             logger.info("✅ Volumen total calculado: {}", totalCounts);
             return result;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getTotalVehicleVolume: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en getTotalVehicleVolume: {}", e.getMessage());
+            return getDefaultTotalVolumeData();
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getTotalVehicleVolume: {}", e.getMessage());
             return getDefaultTotalVolumeData();
         }
     }
@@ -112,16 +117,19 @@ public class DetectionAnalysisService {
                             });
                         }
                     }
-                } catch (Exception e) {
-                    logger.debug("⚠️ Error procesando carril para detección ID {}: {}", detection.getId(), e.getMessage());
+                } catch (RuntimeException e) {
+                    logger.debug("⚠️ Error de runtime procesando carril para detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
             logger.info("✅ Datos de carril calculados para {} carriles", laneData.size());
             return laneData.isEmpty() ? getDefaultLaneData() : laneData;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getVehicleVolumeByLane: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en getVehicleVolumeByLane: {}", e.getMessage());
+            return getDefaultLaneData();
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getVehicleVolumeByLane: {}", e.getMessage());
             return getDefaultLaneData();
         }
     }
@@ -155,16 +163,19 @@ public class DetectionAnalysisService {
                             }
                         }
                     }
-                } catch (Exception e) {
-                    logger.debug("⚠️ Error procesando patrón horario para detección ID {}: {}", detection.getId(), e.getMessage());
+                } catch (RuntimeException e) {
+                    logger.debug("⚠️ Error de runtime procesando patrón horario para detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
             logger.info("✅ Patrones horarios calculados para {} horas", hourlyPattern.size());
             return hourlyPattern.isEmpty() ? getDefaultHourlyPattern() : hourlyPattern;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getHourlyPatterns: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en getHourlyPatterns: {}", e.getMessage());
+            return getDefaultHourlyPattern();
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getHourlyPatterns: {}", e.getMessage());
             return getDefaultHourlyPattern();
         }
     }
@@ -195,8 +206,8 @@ public class DetectionAnalysisService {
                             });
                         }
                     }
-                } catch (Exception e) {
-                    logger.debug("⚠️ Error procesando velocidad para detección ID {}: {}", detection.getId(), e.getMessage());
+                } catch (RuntimeException e) {
+                    logger.debug("⚠️ Error de runtime procesando velocidad para detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
@@ -211,8 +222,11 @@ public class DetectionAnalysisService {
             logger.info("✅ Velocidades calculadas para {} carriles", avgSpeeds.size());
             return avgSpeeds.isEmpty() ? getDefaultSpeedData() : avgSpeeds;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getAvgSpeedByLane: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en getAvgSpeedByLane: {}", e.getMessage());
+            return getDefaultSpeedData();
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getAvgSpeedByLane: {}", e.getMessage());
             return getDefaultSpeedData();
         }
     }
@@ -243,8 +257,8 @@ public class DetectionAnalysisService {
             
             return bottlenecks.toArray();
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getBottlenecks: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getBottlenecks: {}", e.getMessage());
             return new Object[0];
         }
     }
@@ -277,7 +291,8 @@ public class DetectionAnalysisService {
                     } else {
                         addZeroCounts(carCounts, busCounts, truckCounts);
                     }
-                } catch (Exception e) {
+                } catch (RuntimeException e) {
+                    logger.debug("⚠️ Error de runtime en evolución de tráfico: {}", e.getMessage());
                     addZeroCounts(carCounts, busCounts, truckCounts);
                 }
             }
@@ -290,8 +305,11 @@ public class DetectionAnalysisService {
             
             return result;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getTrafficEvolution: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en getTrafficEvolution: {}", e.getMessage());
+            return getDefaultTrafficEvolution();
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getTrafficEvolution: {}", e.getMessage());
             return getDefaultTrafficEvolution();
         }
     }
@@ -324,7 +342,8 @@ public class DetectionAnalysisService {
                     } else {
                         addZeroSpeeds(lane1Speeds, lane2Speeds, lane3Speeds);
                     }
-                } catch (Exception e) {
+                } catch (RuntimeException e) {
+                    logger.debug("⚠️ Error de runtime en evolución de velocidad: {}", e.getMessage());
                     addZeroSpeeds(lane1Speeds, lane2Speeds, lane3Speeds);
                 }
             }
@@ -337,8 +356,11 @@ public class DetectionAnalysisService {
             
             return result;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getSpeedEvolution: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos en getSpeedEvolution: {}", e.getMessage());
+            return getDefaultSpeedEvolution();
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getSpeedEvolution: {}", e.getMessage());
             return getDefaultSpeedEvolution();
         }
     }
@@ -370,8 +392,8 @@ public class DetectionAnalysisService {
             
             return dominance.isEmpty() ? getDefaultDominanceData() : dominance;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getVehicleTypeDominance: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getVehicleTypeDominance: {}", e.getMessage());
             return getDefaultDominanceData();
         }
     }
@@ -379,8 +401,11 @@ public class DetectionAnalysisService {
     public long getTotalDetections() {
         try {
             return detectionRepository.count();
-        } catch (Exception e) {
-            logger.error("❌ Error obteniendo conteo total: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            logger.error("❌ Error de acceso a datos obteniendo conteo total: {}", e.getMessage());
+            return 0L;
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime obteniendo conteo total: {}", e.getMessage());
             return 0L;
         }
     }
@@ -400,8 +425,8 @@ public class DetectionAnalysisService {
             
             return summary;
             
-        } catch (Exception e) {
-            logger.error("❌ Error en getAnalysisSummary: {}", e.getMessage());
+        } catch (RuntimeException e) {
+            logger.error("❌ Error de runtime en getAnalysisSummary: {}", e.getMessage());
             Map<String, Object> errorSummary = new HashMap<>();
             errorSummary.put("error", "Unable to generate summary");
             errorSummary.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -415,9 +440,17 @@ public class DetectionAnalysisService {
             List<Detection> detections = detectionRepository.findAll();
             return detections.stream()
                     .limit(10)
-                    .mapToInt(d -> d.getTimestampMs() != null ? d.getTimestampMs().intValue() % 100 : 0)
+                    .mapToInt(d -> {
+                        // Corregir el problema de unboxing null
+                        Long timestamp = d.getTimestampMs();
+                        return timestamp != null ? timestamp.intValue() % 100 : 0;
+                    })
                     .toArray();
-        } catch (Exception e) {
+        } catch (DataAccessException e) {
+            logger.debug("⚠️ Error de acceso a datos en getArrayData: {}", e.getMessage());
+            return new int[]{45, 23, 78, 12, 90, 32, 56, 67, 89, 15};
+        } catch (RuntimeException e) {
+            logger.debug("⚠️ Error de runtime en getArrayData: {}", e.getMessage());
             return new int[]{45, 23, 78, 12, 90, 32, 56, 67, 89, 15};
         }
     }
@@ -471,7 +504,8 @@ public class DetectionAnalysisService {
             
             return root;
             
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            logger.debug("⚠️ Error de runtime en getTreeData: {}", e.getMessage());
             return Map.of("value", "Error", "children", Collections.emptyList());
         }
     }
@@ -484,21 +518,31 @@ public class DetectionAnalysisService {
                     .limit(8)
                     .map(d -> {
                         Map<String, Object> item = new HashMap<>();
-                        item.put("id", d.getId() != null ? d.getId() : 0L);
+                        // Corregir problema de unboxing null
+                        Long id = d.getId();
+                        item.put("id", id != null ? id : 0L);
                         item.put("date", d.getDate() != null ? d.getDate() : "N/A");
                         return item;
                     })
                     .toArray();
-        } catch (Exception e) {
-            return IntStream.range(1, 9)
-                    .mapToObj(i -> {
-                        Map<String, Object> item = new HashMap<>();
-                        item.put("id", (long) i);
-                        item.put("date", "2025-05-0" + i + " 12:00:00");
-                        return item;
-                    })
-                    .toArray();
+        } catch (DataAccessException e) {
+            logger.debug("⚠️ Error de acceso a datos en getListStructureData: {}", e.getMessage());
+            return getDefaultListData();
+        } catch (RuntimeException e) {
+            logger.debug("⚠️ Error de runtime en getListStructureData: {}", e.getMessage());
+            return getDefaultListData();
         }
+    }
+
+    private Object[] getDefaultListData() {
+        return IntStream.range(1, 9)
+                .mapToObj(i -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("id", (long) i);
+                    item.put("date", "2025-05-0" + i + " 12:00:00");
+                    return item;
+                })
+                .toArray();
     }
 
     private boolean isValidJson(String json) {
@@ -508,8 +552,11 @@ public class DetectionAnalysisService {
     private <T> T parseJson(String json, TypeReference<T> typeRef) {
         try {
             return objectMapper.readValue(json, typeRef);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             logger.debug("⚠️ Error parsing JSON: {}", e.getMessage());
+            return null;
+        } catch (RuntimeException e) {
+            logger.debug("⚠️ Error de runtime parsing JSON: {}", e.getMessage());
             return null;
         }
     }
@@ -525,7 +572,7 @@ public class DetectionAnalysisService {
                     return timeParts[0] + ":00";
                 }
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             logger.debug("⚠️ Error extrayendo hora de fecha '{}': {}", dateStr, e.getMessage());
         }
         return null;
