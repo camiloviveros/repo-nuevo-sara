@@ -16,12 +16,17 @@ public class ProjectbackApplication {
         System.out.println("🚀 Servidor Spring Boot iniciado");
         System.out.println("📡 API disponible en: http://localhost:8080/api");
         System.out.println("🔍 Endpoints principales:");
+        System.out.println("   - GET /api/detections/test");
+        System.out.println("   - GET /api/detections/health");
+        System.out.println("   - GET /api/detections/count");
         System.out.println("   - GET /api/detections/volume/total");
         System.out.println("   - GET /api/detections/volume/by-lane");
         System.out.println("   - GET /api/detections/patterns/hourly");
         System.out.println("   - GET /api/detections/lanes/speed");
         System.out.println("   - GET /api/detections/analysis/summary");
+        System.out.println("   - POST /api/detections/load-json");
         System.out.println("📊 Dashboard disponible en: http://localhost:3000");
+        System.out.println("🧪 Prueba la API con: http://localhost:8080/api/detections/test");
         System.out.println("=================================");
     }
 }

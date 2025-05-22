@@ -16,16 +16,11 @@ public class AnalysisService {
             logger.debug("🔍 Procesando detección tipo: {} con timestamp: {}", 
                         strategyType, detection.getTimestamp_ms());
             
-            // Análisis simplificado sin pattern Strategy
+            // Análisis simplificado sin pattern Strategy usando rule switch
             switch (strategyType.toLowerCase()) {
-                case "vehicle":
-                    processVehicleDetection(detection);
-                    break;
-                case "axle":
-                    processAxleCount(detection);
-                    break;
-                default:
-                    logger.debug("⚠️ Tipo de análisis no reconocido: {}", strategyType);
+                case "vehicle" -> processVehicleDetection(detection);
+                case "axle" -> processAxleCount(detection);
+                default -> logger.debug("⚠️ Tipo de análisis no reconocido: {}", strategyType);
             }
             
         } catch (Exception e) {
@@ -37,13 +32,18 @@ public class AnalysisService {
         try {
             if (detection.getObjects_total() != null) {
                 int totalVehicles = detection.getObjects_total().values().stream()
-                    .mapToInt(Integer::intValue).sum();
+                    .filter(count -> count != null)  // Filtrar nulls para seguridad
+                    .mapToInt(Integer::intValue)
+                    .sum();
                 logger.debug("🚗 Total de vehículos: {}", totalVehicles);
             }
             
             if (detection.getAvg_speed_by_lane() != null) {
-                detection.getAvg_speed_by_lane().forEach((lane, speed) -> 
-                    logger.debug("🛣️ Velocidad en {}: {:.2f} km/h", lane, speed));
+                detection.getAvg_speed_by_lane().forEach((lane, speed) -> {
+                    if (speed != null) {  // Verificar null para seguridad
+                        logger.debug("🛣️ Velocidad en {}: {:.2f} km/h", lane, speed);
+                    }
+                });
             }
             
         } catch (Exception e) {
@@ -54,5 +54,33 @@ public class AnalysisService {
     private void processAxleCount(DetectionJson detection) {
         logger.debug("🔧 Procesando conteo de ejes para timestamp: {}", detection.getTimestamp_ms());
         // Implementación futura para conteo de ejes
+        
+        // Ejemplo de implementación básica para conteo de ejes
+        try {
+            if (detection.getObjects_total() != null) {
+                // Asumiendo que cada vehículo tiene un número promedio de ejes
+                int estimatedAxles = detection.getObjects_total().entrySet().stream()
+                    .filter(entry -> entry.getValue() != null)
+                    .mapToInt(entry -> {
+                        String vehicleType = entry.getKey();
+                        int count = entry.getValue();
+                        
+                        // Estimación de ejes por tipo de vehículo
+                        int axlesPerVehicle = switch (vehicleType.toLowerCase()) {
+                            case "car" -> 2;
+                            case "bus" -> 3;
+                            case "truck" -> 4;
+                            default -> 2;
+                        };
+                        
+                        return count * axlesPerVehicle;
+                    })
+                    .sum();
+                
+                logger.debug("🔧 Ejes estimados: {}", estimatedAxles);
+            }
+        } catch (Exception e) {
+            logger.warn("⚠️ Error en conteo de ejes: {}", e.getMessage());
+        }
     }
 }

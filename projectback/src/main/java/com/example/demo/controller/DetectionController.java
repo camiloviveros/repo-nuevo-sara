@@ -1,14 +1,22 @@
 package com.example.demo.controller;
 
-import com.example.demo.service.DetectionAnalysisService;
-import com.example.demo.service.JsonLoader;
-import lombok.RequiredArgsConstructor;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
+import com.example.demo.service.DetectionAnalysisService;
+import com.example.demo.service.JsonLoader;
+
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/detections")
@@ -20,308 +28,339 @@ public class DetectionController {
     private final DetectionAnalysisService analysisService;
     private final JsonLoader jsonLoader;
 
+    // Endpoint básico de prueba
+    @GetMapping("/test")
+    public ResponseEntity<Map<String, Object>> test() {
+        logger.info("🔧 Endpoint de prueba ejecutado");
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("message", "API funcionando correctamente");
+        response.put("timestamp", System.currentTimeMillis());
+        return ResponseEntity.ok(response);
+    }
+
     // Endpoint para obtener el volumen total de vehículos
     @GetMapping("/volume/total")
     public ResponseEntity<Map<String, Object>> getTotalVehicleVolume() {
+        logger.info("📊 Solicitando volumen total de vehículos");
         try {
-            logger.info("📊 Solicitando volumen total de vehículos");
             Map<String, Object> result = analysisService.getTotalVehicleVolume();
-            logger.debug("✅ Volumen total obtenido: {}", result);
+            logger.info("✅ Volumen total obtenido exitosamente: {}", result);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo volumen total: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo volumen total: {}", e.getMessage(), e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("error", "Error interno del servidor");
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("timestamp", System.currentTimeMillis());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     // Endpoint para obtener volumen por carril
     @GetMapping("/volume/by-lane")
     public ResponseEntity<Map<String, Map<String, Integer>>> getVehicleVolumeByLane() {
+        logger.info("🛣️ Solicitando volumen por carril");
         try {
-            logger.info("🛣️ Solicitando volumen por carril");
             Map<String, Map<String, Integer>> result = analysisService.getVehicleVolumeByLane();
-            logger.debug("✅ Volumen por carril obtenido: {}", result);
+            logger.info("✅ Volumen por carril obtenido exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo volumen por carril: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo volumen por carril: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para obtener patrones horarios
     @GetMapping("/patterns/hourly")
     public ResponseEntity<Map<String, Integer>> getHourlyPatterns() {
+        logger.info("⏰ Solicitando patrones horarios");
         try {
-            logger.info("⏰ Solicitando patrones horarios");
             Map<String, Integer> result = analysisService.getHourlyPatterns();
-            logger.debug("✅ Patrones horarios obtenidos: {}", result);
+            logger.info("✅ Patrones horarios obtenidos exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo patrones horarios: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo patrones horarios: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para obtener velocidad promedio por carril
     @GetMapping("/lanes/speed")
     public ResponseEntity<Map<String, Double>> getAvgSpeedByLane() {
+        logger.info("🚗 Solicitando velocidad promedio por carril");
         try {
-            logger.info("🚗 Solicitando velocidad promedio por carril");
             Map<String, Double> result = analysisService.getAvgSpeedByLane();
-            logger.debug("✅ Velocidades por carril obtenidas: {}", result);
+            logger.info("✅ Velocidades por carril obtenidas exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo velocidades por carril: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo velocidades por carril: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para obtener cuellos de botella
     @GetMapping("/lanes/bottlenecks")
     public ResponseEntity<Object[]> getBottlenecks() {
+        logger.info("🚧 Solicitando cuellos de botella");
         try {
-            logger.info("🚧 Solicitando cuellos de botella");
             Object[] result = analysisService.getBottlenecks();
-            logger.debug("✅ Cuellos de botella obtenidos: {} elementos", result.length);
+            logger.info("✅ Cuellos de botella obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo cuellos de botella: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo cuellos de botella: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para evolución temporal del tráfico
     @GetMapping("/temporal/evolution")
     public ResponseEntity<Map<String, Object>> getTrafficEvolution() {
+        logger.info("📈 Solicitando evolución temporal del tráfico");
         try {
-            logger.info("📈 Solicitando evolución temporal del tráfico");
             Map<String, Object> result = analysisService.getTrafficEvolution();
-            logger.debug("✅ Evolución temporal obtenida");
+            logger.info("✅ Evolución temporal obtenida exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo evolución temporal: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo evolución temporal: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para evolución de velocidad
     @GetMapping("/temporal/speed")
     public ResponseEntity<Map<String, Object>> getSpeedEvolution() {
+        logger.info("🏎️ Solicitando evolución de velocidad");
         try {
-            logger.info("🏎️ Solicitando evolución de velocidad");
             Map<String, Object> result = analysisService.getSpeedEvolution();
-            logger.debug("✅ Evolución de velocidad obtenida");
+            logger.info("✅ Evolución de velocidad obtenida exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo evolución de velocidad: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo evolución de velocidad: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para dominancia de tipos de vehículos
     @GetMapping("/vehicle-types/dominance")
     public ResponseEntity<Map<String, Double>> getVehicleTypeDominance() {
+        logger.info("🚙 Solicitando dominancia de tipos de vehículos");
         try {
-            logger.info("🚙 Solicitando dominancia de tipos de vehículos");
             Map<String, Double> result = analysisService.getVehicleTypeDominance();
-            logger.debug("✅ Dominancia de tipos obtenida: {}", result);
+            logger.info("✅ Dominancia de tipos obtenida exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo dominancia de tipos: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo dominancia de tipos: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoints para estructuras de datos
     @GetMapping("/structures/array")
     public ResponseEntity<int[]> getArrayData() {
+        logger.info("📊 Solicitando datos de array");
         try {
-            logger.info("📊 Solicitando datos de array");
             int[] result = analysisService.getArrayData();
-            logger.debug("✅ Datos de array obtenidos: {} elementos", result.length);
+            logger.info("✅ Datos de array obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de array: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de array: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/structures/linked-list")
     public ResponseEntity<Object[]> getLinkedListData() {
+        logger.info("🔗 Solicitando datos de lista enlazada");
         try {
-            logger.info("🔗 Solicitando datos de lista enlazada");
             Object[] result = analysisService.getLinkedListData();
-            logger.debug("✅ Datos de lista enlazada obtenidos: {} elementos", result.length);
+            logger.info("✅ Datos de lista enlazada obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de lista enlazada: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de lista enlazada: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/structures/double-linked-list")
     public ResponseEntity<Object[]> getDoubleLinkedListData() {
+        logger.info("🔗🔗 Solicitando datos de lista doblemente enlazada");
         try {
-            logger.info("🔗🔗 Solicitando datos de lista doblemente enlazada");
             Object[] result = analysisService.getDoubleLinkedListData();
-            logger.debug("✅ Datos de lista doblemente enlazada obtenidos: {} elementos", result.length);
+            logger.info("✅ Datos de lista doblemente enlazada obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de lista doblemente enlazada: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de lista doblemente enlazada: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/structures/circular-double-linked-list")
     public ResponseEntity<Object[]> getCircularDoubleLinkedListData() {
+        logger.info("⭕ Solicitando datos de lista circular doblemente enlazada");
         try {
-            logger.info("⭕ Solicitando datos de lista circular doblemente enlazada");
             Object[] result = analysisService.getCircularDoubleLinkedListData();
-            logger.debug("✅ Datos de lista circular obtenidos: {} elementos", result.length);
+            logger.info("✅ Datos de lista circular obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de lista circular: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de lista circular: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/structures/stack")
     public ResponseEntity<Object[]> getStackData() {
+        logger.info("📚 Solicitando datos de pila");
         try {
-            logger.info("📚 Solicitando datos de pila");
             Object[] result = analysisService.getStackData();
-            logger.debug("✅ Datos de pila obtenidos: {} elementos", result.length);
+            logger.info("✅ Datos de pila obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de pila: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de pila: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/structures/queue")
     public ResponseEntity<Object[]> getQueueData() {
+        logger.info("📋 Solicitando datos de cola");
         try {
-            logger.info("📋 Solicitando datos de cola");
             Object[] result = analysisService.getQueueData();
-            logger.debug("✅ Datos de cola obtenidos: {} elementos", result.length);
+            logger.info("✅ Datos de cola obtenidos exitosamente: {} elementos", result.length);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de cola: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de cola: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     @GetMapping("/structures/tree")
     public ResponseEntity<Map<String, Object>> getTreeData() {
+        logger.info("🌳 Solicitando datos de árbol");
         try {
-            logger.info("🌳 Solicitando datos de árbol");
             Map<String, Object> result = analysisService.getTreeData();
-            logger.debug("✅ Datos de árbol obtenidos");
+            logger.info("✅ Datos de árbol obtenidos exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo datos de árbol: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo datos de árbol: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para cargar manualmente el JSON
     @PostMapping("/load-json")
     public ResponseEntity<Map<String, Object>> loadJsonManually() {
+        logger.info("📂 Cargando JSON manualmente");
         try {
-            logger.info("📂 Cargando JSON manualmente");
             jsonLoader.loadJsonAndSaveToDb();
             
-            Map<String, Object> response = Map.of(
-                "status", "success",
-                "message", "JSON cargado exitosamente",
-                "timestamp", System.currentTimeMillis()
-            );
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", "JSON cargado exitosamente");
+            response.put("timestamp", System.currentTimeMillis());
             
             logger.info("✅ JSON cargado manualmente con éxito");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            logger.error("❌ Error cargando JSON manualmente: {}", e.getMessage());
+            logger.error("❌ Error cargando JSON manualmente: {}", e.getMessage(), e);
             
-            Map<String, Object> errorResponse = Map.of(
-                "status", "error",
-                "message", "Error cargando JSON: " + e.getMessage(),
-                "timestamp", System.currentTimeMillis()
-            );
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", "error");
+            errorResponse.put("message", "Error cargando JSON: " + e.getMessage());
+            errorResponse.put("timestamp", System.currentTimeMillis());
             
-            return ResponseEntity.internalServerError().body(errorResponse);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     // Endpoint para obtener estadísticas generales
     @GetMapping("/analysis/summary")
     public ResponseEntity<Map<String, Object>> getAnalysisSummary() {
+        logger.info("📋 Solicitando resumen de análisis");
         try {
-            logger.info("📋 Solicitando resumen de análisis");
             Map<String, Object> result = analysisService.getAnalysisSummary();
-            logger.debug("✅ Resumen de análisis obtenido: {}", result);
+            logger.info("✅ Resumen de análisis obtenido exitosamente");
             return ResponseEntity.ok(result);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo resumen de análisis: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo resumen de análisis: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     // Endpoint para verificar el estado del servidor
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> getHealthStatus() {
+        logger.info("💚 Verificando estado de salud");
         try {
             long totalDetections = analysisService.getTotalDetections();
             
-            Map<String, Object> health = Map.of(
-                "status", "UP",
-                "timestamp", System.currentTimeMillis(),
-                "totalDetections", totalDetections,
-                "service", "Detection Analysis API",
-                "version", "1.0.0"
-            );
+            Map<String, Object> health = new HashMap<>();
+            health.put("status", "UP");
+            health.put("timestamp", System.currentTimeMillis());
+            health.put("totalDetections", totalDetections);
+            health.put("service", "Detection Analysis API");
+            health.put("version", "1.0.0");
+            health.put("database", "Connected");
             
-            logger.debug("💚 Estado de salud verificado: {} detecciones en BD", totalDetections);
+            logger.info("💚 Estado de salud verificado: {} detecciones en BD", totalDetections);
             return ResponseEntity.ok(health);
         } catch (Exception e) {
-            logger.error("❌ Error verificando estado de salud: {}", e.getMessage());
+            logger.error("❌ Error verificando estado de salud: {}", e.getMessage(), e);
             
-            Map<String, Object> health = Map.of(
-                "status", "DOWN",
-                "timestamp", System.currentTimeMillis(),
-                "error", e.getMessage()
-            );
+            Map<String, Object> health = new HashMap<>();
+            health.put("status", "DOWN");
+            health.put("timestamp", System.currentTimeMillis());
+            health.put("error", e.getMessage());
+            health.put("database", "Error");
             
-            return ResponseEntity.internalServerError().body(health);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(health);
         }
     }
 
     // Endpoint para obtener estadísticas rápidas
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getQuickStats() {
+        logger.info("📊 Solicitando estadísticas rápidas");
         try {
-            logger.info("📊 Solicitando estadísticas rápidas");
-            
             Map<String, Object> totalVolume = analysisService.getTotalVehicleVolume();
             Map<String, Double> avgSpeeds = analysisService.getAvgSpeedByLane();
             long totalDetections = analysisService.getTotalDetections();
             
             @SuppressWarnings("unchecked")
             Map<String, Integer> totals = (Map<String, Integer>) totalVolume.get("total");
-            int totalVehicles = totals.values().stream().mapToInt(Integer::intValue).sum();
+            int totalVehicles = totals != null ? totals.values().stream().mapToInt(Integer::intValue).sum() : 0;
             
-            Map<String, Object> stats = Map.of(
-                "totalDetections", totalDetections,
-                "totalVehicles", totalVehicles,
-                "avgSpeedOverall", avgSpeeds.values().stream().mapToDouble(Double::doubleValue).average().orElse(0.0),
-                "activeLines", avgSpeeds.size(),
-                "lastUpdated", System.currentTimeMillis()
-            );
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("totalDetections", totalDetections);
+            stats.put("totalVehicles", totalVehicles);
+            stats.put("avgSpeedOverall", avgSpeeds.values().stream().mapToDouble(Double::doubleValue).average().orElse(0.0));
+            stats.put("activeLines", avgSpeeds.size());
+            stats.put("lastUpdated", System.currentTimeMillis());
             
-            logger.debug("✅ Estadísticas rápidas obtenidas: {}", stats);
+            logger.info("✅ Estadísticas rápidas obtenidas exitosamente");
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
-            logger.error("❌ Error obteniendo estadísticas rápidas: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
+            logger.error("❌ Error obteniendo estadísticas rápidas: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // Endpoint para obtener conteo total de registros en BD
+    @GetMapping("/count")
+    public ResponseEntity<Map<String, Object>> getDetectionCount() {
+        logger.info("🔢 Solicitando conteo de detecciones");
+        try {
+            long count = analysisService.getTotalDetections();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("totalDetections", count);
+            response.put("timestamp", System.currentTimeMillis());
+            
+            logger.info("✅ Conteo obtenido: {} detecciones", count);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("❌ Error obteniendo conteo: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 }
