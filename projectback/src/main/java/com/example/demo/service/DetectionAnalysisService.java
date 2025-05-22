@@ -2,7 +2,6 @@ package com.example.demo.service;
 
 import com.example.demo.entity.Detection;
 import com.example.demo.repository.DetectionRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -24,37 +23,29 @@ public class DetectionAnalysisService {
     private final ObjectMapper objectMapper;
 
     public Map<String, Object> getTotalVehicleVolume() {
-        logger.debug("🔍 Iniciando consulta de volumen total de vehículos");
+        logger.debug("🔍 Consultando volumen total de vehículos");
         
         try {
-            List<Detection> detections = detectionRepository.findAllOrderByTimestamp();
-            logger.debug("📊 Se obtuvieron {} detecciones de la base de datos", detections.size());
+            List<Detection> detections = detectionRepository.findAll();
+            logger.debug("📊 Obtenidas {} detecciones de la BD", detections.size());
             
             if (detections.isEmpty()) {
-                logger.warn("⚠️ No se encontraron detecciones en la base de datos");
                 return getDefaultTotalVolumeData();
             }
             
             Map<String, Integer> totalCounts = new HashMap<>();
             Map<String, Integer> hourlyCounts = new HashMap<>();
-            Map<String, Integer> dailyCounts = new HashMap<>();
             
             for (Detection detection : detections) {
                 try {
-                    if (detection.getObjectsTotal() != null && !detection.getObjectsTotal().trim().isEmpty() && !detection.getObjectsTotal().equals("{}")) {
-                        logger.debug("📝 Procesando detección ID: {} con datos: {}", detection.getId(), detection.getObjectsTotal());
+                    if (isValidJson(detection.getObjectsTotal())) {
+                        Map<String, Integer> objects = parseJson(detection.getObjectsTotal(), 
+                            new TypeReference<Map<String, Integer>>() {});
                         
-                        Map<String, Integer> objects = objectMapper.readValue(
-                            detection.getObjectsTotal(), 
-                            new TypeReference<Map<String, Integer>>() {}
-                        );
-                        
-                        if (objects != null && !objects.isEmpty()) {
-                            // Sumar totales
+                        if (objects != null) {
                             objects.forEach((key, value) -> {
                                 if (value != null && value > 0) {
                                     totalCounts.merge(key, value, Integer::sum);
-                                    logger.debug("🚗 Sumando {} {}: total ahora = {}", value, key, totalCounts.get(key));
                                 }
                             });
                             
@@ -69,65 +60,34 @@ public class DetectionAnalysisService {
                                     hourlyCounts.merge(hour, hourlyTotal, Integer::sum);
                                 }
                             }
-                            
-                            // Análisis diario (simplificado)
-                            String dayType = getDayType();
-                            int dailyTotal = objects.values().stream()
-                                .filter(Objects::nonNull)
-                                .mapToInt(Integer::intValue)
-                                .sum();
-                            if (dailyTotal > 0) {
-                                dailyCounts.merge(dayType, dailyTotal, Integer::sum);
-                            }
                         }
                     }
-                } catch (JsonProcessingException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de procesamiento JSON";
-                    logger.error("❌ Error JSON procesando detección ID {}: {}", detection.getId(), safeMessage);
-                } catch (RuntimeException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-                    logger.error("❌ Error de ejecución procesando detección ID {}: {}", detection.getId(), safeMessage);
+                } catch (Exception e) {
+                    logger.debug("⚠️ Error procesando detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
-            logger.info("✅ Totales calculados: {}", totalCounts);
-            
             Map<String, Object> result = new HashMap<>();
-            result.put("total", totalCounts.isEmpty() ? Map.of("car", 0, "bus", 0, "truck", 0) : totalCounts);
+            result.put("total", totalCounts.isEmpty() ? getDefaultTotals() : totalCounts);
             result.put("hourly", hourlyCounts);
-            result.put("daily", dailyCounts);
+            result.put("daily", Map.of("weekday", getTotalVehicleCount(totalCounts)));
             
+            logger.info("✅ Volumen total calculado: {}", totalCounts);
             return result;
             
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getTotalVehicleVolume: {}", safeMessage, e);
-            return getDefaultTotalVolumeData();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getTotalVehicleVolume: {}", safeMessage, e);
-            return getDefaultTotalVolumeData();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getTotalVehicleVolume: {}", safeMessage, e);
+            logger.error("❌ Error en getTotalVehicleVolume: {}", e.getMessage());
             return getDefaultTotalVolumeData();
         }
     }
 
     public Map<String, Map<String, Integer>> getVehicleVolumeByLane() {
-        logger.debug("🔍 Iniciando consulta de volumen por carril");
+        logger.debug("🔍 Consultando volumen por carril");
         
         try {
-            List<Detection> detections = detectionRepository.findTop50ByOrderByTimestampMsDesc();
-            logger.debug("🛣️ Se obtuvieron {} detecciones recientes de la base de datos", detections.size());
+            List<Detection> detections = detectionRepository.findAll();
             
             if (detections.isEmpty()) {
-                logger.warn("⚠️ No se encontraron detecciones recientes en la base de datos");
                 return getDefaultLaneData();
             }
             
@@ -135,70 +95,44 @@ public class DetectionAnalysisService {
             
             for (Detection detection : detections) {
                 try {
-                    if (detection.getObjectsByLane() != null && !detection.getObjectsByLane().trim().isEmpty() && !detection.getObjectsByLane().equals("{}")) {
-                        logger.debug("📝 Procesando datos de carril para detección ID: {}", detection.getId());
+                    if (isValidJson(detection.getObjectsByLane())) {
+                        Map<String, Map<String, Integer>> lanes = parseJson(detection.getObjectsByLane(), 
+                            new TypeReference<Map<String, Map<String, Integer>>>() {});
                         
-                        Map<String, Map<String, Integer>> lanes = objectMapper.readValue(
-                            detection.getObjectsByLane(), 
-                            new TypeReference<Map<String, Map<String, Integer>>>() {}
-                        );
-                        
-                        if (lanes != null && !lanes.isEmpty()) {
+                        if (lanes != null) {
                             lanes.forEach((lane, vehicles) -> {
-                                if (vehicles != null && !vehicles.isEmpty()) {
+                                if (vehicles != null) {
                                     laneData.computeIfAbsent(lane, k -> new HashMap<>());
                                     vehicles.forEach((vehicleType, count) -> {
                                         if (count != null && count > 0) {
                                             laneData.get(lane).merge(vehicleType, count, Integer::sum);
-                                            logger.debug("🚗 Carril {}: {} {} (total: {})", 
-                                                lane, count, vehicleType, laneData.get(lane).get(vehicleType));
                                         }
                                     });
                                 }
                             });
                         }
                     }
-                } catch (JsonProcessingException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de procesamiento JSON";
-                    logger.error("❌ Error JSON procesando datos de carril para detección ID {}: {}", detection.getId(), safeMessage);
-                } catch (RuntimeException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-                    logger.error("❌ Error de ejecución procesando datos de carril para detección ID {}: {}", detection.getId(), safeMessage);
+                } catch (Exception e) {
+                    logger.debug("⚠️ Error procesando carril para detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
-            logger.info("✅ Datos de carril calculados: {}", laneData);
+            logger.info("✅ Datos de carril calculados para {} carriles", laneData.size());
             return laneData.isEmpty() ? getDefaultLaneData() : laneData;
             
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getVehicleVolumeByLane: {}", safeMessage, e);
-            return getDefaultLaneData();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getVehicleVolumeByLane: {}", safeMessage, e);
-            return getDefaultLaneData();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getVehicleVolumeByLane: {}", safeMessage, e);
+            logger.error("❌ Error en getVehicleVolumeByLane: {}", e.getMessage());
             return getDefaultLaneData();
         }
     }
 
     public Map<String, Integer> getHourlyPatterns() {
-        logger.debug("🔍 Iniciando consulta de patrones horarios");
+        logger.debug("🔍 Consultando patrones horarios");
         
         try {
-            List<Detection> detections = detectionRepository.findAllOrderByTimestamp();
-            logger.debug("⏰ Se obtuvieron {} detecciones para análisis horario", detections.size());
+            List<Detection> detections = detectionRepository.findAll();
             
             if (detections.isEmpty()) {
-                logger.warn("⚠️ No se encontraron detecciones para análisis horario");
                 return getDefaultHourlyPattern();
             }
             
@@ -207,64 +141,41 @@ public class DetectionAnalysisService {
             for (Detection detection : detections) {
                 try {
                     String hour = extractHourFromDate(detection.getDate());
-                    if (hour != null && detection.getObjectsTotal() != null && !detection.getObjectsTotal().trim().isEmpty() && !detection.getObjectsTotal().equals("{}")) {
-                        Map<String, Integer> objects = objectMapper.readValue(
-                            detection.getObjectsTotal(), 
-                            new TypeReference<Map<String, Integer>>() {}
-                        );
+                    if (hour != null && isValidJson(detection.getObjectsTotal())) {
+                        Map<String, Integer> objects = parseJson(detection.getObjectsTotal(), 
+                            new TypeReference<Map<String, Integer>>() {});
                         
-                        if (objects != null && !objects.isEmpty()) {
+                        if (objects != null) {
                             int totalVehicles = objects.values().stream()
                                 .filter(Objects::nonNull)
                                 .mapToInt(Integer::intValue)
                                 .sum();
                             if (totalVehicles > 0) {
                                 hourlyPattern.merge(hour, totalVehicles, Integer::sum);
-                                logger.debug("⏰ Hora {}: {} vehículos (total: {})", hour, totalVehicles, hourlyPattern.get(hour));
                             }
                         }
                     }
-                } catch (JsonProcessingException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de procesamiento JSON";
-                    logger.error("❌ Error JSON procesando patrón horario para detección ID {}: {}", detection.getId(), safeMessage);
-                } catch (RuntimeException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-                    logger.error("❌ Error de ejecución procesando patrón horario para detección ID {}: {}", detection.getId(), safeMessage);
+                } catch (Exception e) {
+                    logger.debug("⚠️ Error procesando patrón horario para detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
-            logger.info("✅ Patrones horarios calculados: {}", hourlyPattern);
+            logger.info("✅ Patrones horarios calculados para {} horas", hourlyPattern.size());
             return hourlyPattern.isEmpty() ? getDefaultHourlyPattern() : hourlyPattern;
             
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getHourlyPatterns: {}", safeMessage, e);
-            return getDefaultHourlyPattern();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getHourlyPatterns: {}", safeMessage, e);
-            return getDefaultHourlyPattern();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getHourlyPatterns: {}", safeMessage, e);
+            logger.error("❌ Error en getHourlyPatterns: {}", e.getMessage());
             return getDefaultHourlyPattern();
         }
     }
 
     public Map<String, Double> getAvgSpeedByLane() {
-        logger.debug("🔍 Iniciando consulta de velocidades por carril");
+        logger.debug("🔍 Consultando velocidades por carril");
         
         try {
-            List<Detection> detections = detectionRepository.findTop50ByOrderByTimestampMsDesc();
-            logger.debug("🏎️ Se obtuvieron {} detecciones para análisis de velocidad", detections.size());
+            List<Detection> detections = detectionRepository.findAll();
             
             if (detections.isEmpty()) {
-                logger.warn("⚠️ No se encontraron detecciones para análisis de velocidad");
                 return getDefaultSpeedData();
             }
             
@@ -272,31 +183,20 @@ public class DetectionAnalysisService {
             
             for (Detection detection : detections) {
                 try {
-                    if (detection.getAvgSpeedByLane() != null && !detection.getAvgSpeedByLane().trim().isEmpty() && !detection.getAvgSpeedByLane().equals("{}")) {
-                        logger.debug("📝 Procesando velocidades para detección ID: {}", detection.getId());
+                    if (isValidJson(detection.getAvgSpeedByLane())) {
+                        Map<String, Double> speeds = parseJson(detection.getAvgSpeedByLane(), 
+                            new TypeReference<Map<String, Double>>() {});
                         
-                        Map<String, Double> speeds = objectMapper.readValue(
-                            detection.getAvgSpeedByLane(), 
-                            new TypeReference<Map<String, Double>>() {}
-                        );
-                        
-                        if (speeds != null && !speeds.isEmpty()) {
+                        if (speeds != null) {
                             speeds.forEach((lane, speed) -> {
                                 if (speed != null && speed > 0) {
                                     speedsByLane.computeIfAbsent(lane, k -> new ArrayList<>()).add(speed);
-                                    logger.debug("🏎️ Carril {}: velocidad {} km/h", lane, speed);
                                 }
                             });
                         }
                     }
-                } catch (JsonProcessingException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de procesamiento JSON";
-                    logger.error("❌ Error JSON procesando velocidades para detección ID {}: {}", detection.getId(), safeMessage);
-                } catch (RuntimeException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-                    logger.error("❌ Error de ejecución procesando velocidades para detección ID {}: {}", detection.getId(), safeMessage);
+                } catch (Exception e) {
+                    logger.debug("⚠️ Error procesando velocidad para detección ID {}: {}", detection.getId(), e.getMessage());
                 }
             }
             
@@ -304,35 +204,20 @@ public class DetectionAnalysisService {
             speedsByLane.forEach((lane, speeds) -> {
                 if (!speeds.isEmpty()) {
                     double average = speeds.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-                    avgSpeeds.put(lane, Math.round(average * 100.0) / 100.0); // Redondear a 2 decimales
-                    logger.debug("🏎️ Carril {}: velocidad promedio {} km/h", lane, avgSpeeds.get(lane));
+                    avgSpeeds.put(lane, Math.round(average * 100.0) / 100.0);
                 }
             });
             
-            logger.info("✅ Velocidades promedio calculadas: {}", avgSpeeds);
+            logger.info("✅ Velocidades calculadas para {} carriles", avgSpeeds.size());
             return avgSpeeds.isEmpty() ? getDefaultSpeedData() : avgSpeeds;
             
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getAvgSpeedByLane: {}", safeMessage, e);
-            return getDefaultSpeedData();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getAvgSpeedByLane: {}", safeMessage, e);
-            return getDefaultSpeedData();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getAvgSpeedByLane: {}", safeMessage, e);
+            logger.error("❌ Error en getAvgSpeedByLane: {}", e.getMessage());
             return getDefaultSpeedData();
         }
     }
 
     public Object[] getBottlenecks() {
-        logger.debug("🔍 Iniciando identificación de cuellos de botella");
-        
         try {
             Map<String, Double> avgSpeeds = getAvgSpeedByLane();
             Map<String, Map<String, Integer>> laneData = getVehicleVolumeByLane();
@@ -340,54 +225,33 @@ public class DetectionAnalysisService {
             List<Map<String, Object>> bottlenecks = new ArrayList<>();
             
             avgSpeeds.forEach((lane, avgSpeed) -> {
-                if (avgSpeed < 15.0) { // Threshold para identificar cuello de botella
+                if (avgSpeed < 15.0) {
                     Map<String, Integer> vehicles = laneData.getOrDefault(lane, new HashMap<>());
                     int totalVehicles = vehicles.values().stream()
                         .filter(Objects::nonNull)
                         .mapToInt(Integer::intValue)
                         .sum();
-                    int heavyVehicles = vehicles.getOrDefault("truck", 0) + vehicles.getOrDefault("bus", 0);
                     
                     Map<String, Object> bottleneck = new HashMap<>();
                     bottleneck.put("lane", lane);
-                    bottleneck.put("avgSpeed", Math.round(avgSpeed * 100.0) / 100.0);
+                    bottleneck.put("avgSpeed", avgSpeed);
                     bottleneck.put("totalVehicles", totalVehicles);
-                    bottleneck.put("heavyVehicles", heavyVehicles);
                     
                     bottlenecks.add(bottleneck);
-                    logger.debug("🚧 Cuello de botella identificado en {}: {}km/h, {} vehículos", lane, avgSpeed, totalVehicles);
                 }
             });
             
-            logger.info("✅ Identificados {} cuellos de botella", bottlenecks.size());
             return bottlenecks.toArray();
             
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getBottlenecks: {}", safeMessage, e);
-            return new Object[0];
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getBottlenecks: {}", safeMessage, e);
+            logger.error("❌ Error en getBottlenecks: {}", e.getMessage());
             return new Object[0];
         }
     }
 
     public Map<String, Object> getTrafficEvolution() {
-        logger.debug("🔍 Iniciando consulta de evolución del tráfico");
-        
         try {
-            List<Detection> detections = detectionRepository.findTop50ByOrderByTimestampMsDesc();
-            logger.debug("📈 Se obtuvieron {} detecciones para evolución temporal", detections.size());
-            
-            if (detections.isEmpty()) {
-                logger.warn("⚠️ No se encontraron detecciones para evolución temporal");
-                return getDefaultTrafficEvolution();
-            }
-            
-            // Ordenar por timestamp ascendente para mostrar evolución correcta
+            List<Detection> detections = detectionRepository.findAll();
             detections.sort(Comparator.comparing(Detection::getTimestampMs));
             
             List<String> timestamps = new ArrayList<>();
@@ -396,43 +260,25 @@ public class DetectionAnalysisService {
             List<Integer> truckCounts = new ArrayList<>();
             
             for (Detection detection : detections) {
+                timestamps.add(detection.getDate() != null ? detection.getDate() : "N/A");
+                
                 try {
-                    timestamps.add(detection.getDate() != null ? detection.getDate() : "N/A");
-                    
-                    if (detection.getObjectsTotal() != null && !detection.getObjectsTotal().trim().isEmpty() && !detection.getObjectsTotal().equals("{}")) {
-                        Map<String, Integer> objects = objectMapper.readValue(
-                            detection.getObjectsTotal(), 
-                            new TypeReference<Map<String, Integer>>() {}
-                        );
+                    if (isValidJson(detection.getObjectsTotal())) {
+                        Map<String, Integer> objects = parseJson(detection.getObjectsTotal(), 
+                            new TypeReference<Map<String, Integer>>() {});
                         
                         if (objects != null) {
                             carCounts.add(objects.getOrDefault("car", 0));
                             busCounts.add(objects.getOrDefault("bus", 0));
                             truckCounts.add(objects.getOrDefault("truck", 0));
                         } else {
-                            carCounts.add(0);
-                            busCounts.add(0);
-                            truckCounts.add(0);
+                            addZeroCounts(carCounts, busCounts, truckCounts);
                         }
                     } else {
-                        carCounts.add(0);
-                        busCounts.add(0);
-                        truckCounts.add(0);
+                        addZeroCounts(carCounts, busCounts, truckCounts);
                     }
-                } catch (JsonProcessingException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de procesamiento JSON";
-                    logger.error("❌ Error JSON procesando evolución para detección ID {}: {}", detection.getId(), safeMessage);
-                    carCounts.add(0);
-                    busCounts.add(0);
-                    truckCounts.add(0);
-                } catch (RuntimeException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-                    logger.error("❌ Error de ejecución procesando evolución para detección ID {}: {}", detection.getId(), safeMessage);
-                    carCounts.add(0);
-                    busCounts.add(0);
-                    truckCounts.add(0);
+                } catch (Exception e) {
+                    addZeroCounts(carCounts, busCounts, truckCounts);
                 }
             }
             
@@ -442,40 +288,17 @@ public class DetectionAnalysisService {
             result.put("bus", busCounts);
             result.put("truck", truckCounts);
             
-            logger.info("✅ Evolución del tráfico calculada con {} puntos de datos", timestamps.size());
             return result;
             
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getTrafficEvolution: {}", safeMessage, e);
-            return getDefaultTrafficEvolution();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getTrafficEvolution: {}", safeMessage, e);
-            return getDefaultTrafficEvolution();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getTrafficEvolution: {}", safeMessage, e);
+            logger.error("❌ Error en getTrafficEvolution: {}", e.getMessage());
             return getDefaultTrafficEvolution();
         }
     }
 
     public Map<String, Object> getSpeedEvolution() {
-        logger.debug("🔍 Iniciando consulta de evolución de velocidad");
-        
         try {
-            List<Detection> detections = detectionRepository.findTop50ByOrderByTimestampMsDesc();
-            logger.debug("🏎️ Se obtuvieron {} detecciones para evolución de velocidad", detections.size());
-            
-            if (detections.isEmpty()) {
-                logger.warn("⚠️ No se encontraron detecciones para evolución de velocidad");
-                return getDefaultSpeedEvolution();
-            }
-            
-            // Ordenar por timestamp ascendente para mostrar evolución correcta
+            List<Detection> detections = detectionRepository.findAll();
             detections.sort(Comparator.comparing(Detection::getTimestampMs));
             
             List<String> timestamps = new ArrayList<>();
@@ -484,43 +307,25 @@ public class DetectionAnalysisService {
             List<Double> lane3Speeds = new ArrayList<>();
             
             for (Detection detection : detections) {
+                timestamps.add(detection.getDate() != null ? detection.getDate() : "N/A");
+                
                 try {
-                    timestamps.add(detection.getDate() != null ? detection.getDate() : "N/A");
-                    
-                    if (detection.getAvgSpeedByLane() != null && !detection.getAvgSpeedByLane().trim().isEmpty() && !detection.getAvgSpeedByLane().equals("{}")) {
-                        Map<String, Double> speeds = objectMapper.readValue(
-                            detection.getAvgSpeedByLane(), 
-                            new TypeReference<Map<String, Double>>() {}
-                        );
+                    if (isValidJson(detection.getAvgSpeedByLane())) {
+                        Map<String, Double> speeds = parseJson(detection.getAvgSpeedByLane(), 
+                            new TypeReference<Map<String, Double>>() {});
                         
                         if (speeds != null) {
                             lane1Speeds.add(speeds.getOrDefault("lane_1", 0.0));
                             lane2Speeds.add(speeds.getOrDefault("lane_2", 0.0));
                             lane3Speeds.add(speeds.getOrDefault("lane_3", 0.0));
                         } else {
-                            lane1Speeds.add(0.0);
-                            lane2Speeds.add(0.0);
-                            lane3Speeds.add(0.0);
+                            addZeroSpeeds(lane1Speeds, lane2Speeds, lane3Speeds);
                         }
                     } else {
-                        lane1Speeds.add(0.0);
-                        lane2Speeds.add(0.0);
-                        lane3Speeds.add(0.0);
+                        addZeroSpeeds(lane1Speeds, lane2Speeds, lane3Speeds);
                     }
-                } catch (JsonProcessingException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de procesamiento JSON";
-                    logger.error("❌ Error JSON procesando evolución de velocidad para detección ID {}: {}", detection.getId(), safeMessage);
-                    lane1Speeds.add(0.0);
-                    lane2Speeds.add(0.0);
-                    lane3Speeds.add(0.0);
-                } catch (RuntimeException e) {
-                    String errorMessage = e.getMessage();
-                    String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-                    logger.error("❌ Error de ejecución procesando evolución de velocidad para detección ID {}: {}", detection.getId(), safeMessage);
-                    lane1Speeds.add(0.0);
-                    lane2Speeds.add(0.0);
-                    lane3Speeds.add(0.0);
+                } catch (Exception e) {
+                    addZeroSpeeds(lane1Speeds, lane2Speeds, lane3Speeds);
                 }
             }
             
@@ -530,37 +335,21 @@ public class DetectionAnalysisService {
             result.put("lane_2", lane2Speeds);
             result.put("lane_3", lane3Speeds);
             
-            logger.info("✅ Evolución de velocidad calculada con {} puntos de datos", timestamps.size());
             return result;
             
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getSpeedEvolution: {}", safeMessage, e);
-            return getDefaultSpeedEvolution();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getSpeedEvolution: {}", safeMessage, e);
-            return getDefaultSpeedEvolution();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getSpeedEvolution: {}", safeMessage, e);
+            logger.error("❌ Error en getSpeedEvolution: {}", e.getMessage());
             return getDefaultSpeedEvolution();
         }
     }
 
     public Map<String, Double> getVehicleTypeDominance() {
-        logger.debug("🔍 Iniciando consulta de dominancia de tipos de vehículos");
-        
         try {
             Map<String, Object> totalVolume = getTotalVehicleVolume();
             @SuppressWarnings("unchecked")
             Map<String, Integer> totals = (Map<String, Integer>) totalVolume.get("total");
             
             if (totals == null || totals.isEmpty()) {
-                logger.warn("⚠️ No se encontraron totales para calcular dominancia");
                 return getDefaultDominanceData();
             }
             
@@ -573,55 +362,30 @@ public class DetectionAnalysisService {
             if (totalVehicles > 0) {
                 totals.forEach((type, count) -> {
                     if (count != null && count > 0) {
-                        double percentage = Math.round((count.doubleValue() / totalVehicles) * 10000.0) / 100.0; // 2 decimales
+                        double percentage = Math.round((count.doubleValue() / totalVehicles) * 10000.0) / 100.0;
                         dominance.put(type, percentage);
-                        logger.debug("🚙 Tipo {}: {} vehículos ({}%)", type, count, percentage);
                     }
                 });
             }
             
-            logger.info("✅ Dominancia de tipos calculada: {}", dominance);
             return dominance.isEmpty() ? getDefaultDominanceData() : dominance;
             
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getVehicleTypeDominance: {}", safeMessage, e);
-            return getDefaultDominanceData();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getVehicleTypeDominance: {}", safeMessage, e);
+            logger.error("❌ Error en getVehicleTypeDominance: {}", e.getMessage());
             return getDefaultDominanceData();
         }
     }
 
     public long getTotalDetections() {
         try {
-            long count = detectionRepository.countAllDetections();
-            logger.debug("📊 Total de detecciones en BD: {}", count);
-            return count;
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD obteniendo conteo total: {}", safeMessage, e);
-            return 0L;
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución obteniendo conteo total: {}", safeMessage, e);
-            return 0L;
+            return detectionRepository.count();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general obteniendo conteo total: {}", safeMessage, e);
+            logger.error("❌ Error obteniendo conteo total: {}", e.getMessage());
             return 0L;
         }
     }
 
     public Map<String, Object> getAnalysisSummary() {
-        logger.debug("🔍 Iniciando resumen de análisis");
-        
         try {
             long totalDetections = getTotalDetections();
             Map<String, Object> totalVolume = getTotalVehicleVolume();
@@ -634,29 +398,10 @@ public class DetectionAnalysisService {
             summary.put("lastUpdated", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             summary.put("dataQuality", totalDetections > 0 ? "Good" : "No Data");
             
-            logger.info("✅ Resumen de análisis generado: {} detecciones", totalDetections);
             return summary;
             
-        } catch (java.time.DateTimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de formato de fecha";
-            logger.error("❌ Error de fecha en getAnalysisSummary: {}", safeMessage, e);
-            Map<String, Object> errorSummary = new HashMap<>();
-            errorSummary.put("error", "Unable to generate summary - date error");
-            errorSummary.put("timestamp", "Error");
-            return errorSummary;
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getAnalysisSummary: {}", safeMessage, e);
-            Map<String, Object> errorSummary = new HashMap<>();
-            errorSummary.put("error", "Unable to generate summary - runtime error");
-            errorSummary.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            return errorSummary;
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getAnalysisSummary: {}", safeMessage, e);
+            logger.error("❌ Error en getAnalysisSummary: {}", e.getMessage());
             Map<String, Object> errorSummary = new HashMap<>();
             errorSummary.put("error", "Unable to generate summary");
             errorSummary.put("timestamp", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -667,31 +412,13 @@ public class DetectionAnalysisService {
     // Métodos para estructuras de datos
     public int[] getArrayData() {
         try {
-            List<Detection> detections = detectionRepository.findTop50ByOrderByTimestampMsDesc();
-            logger.debug("📊 Generando array con {} detecciones", Math.min(detections.size(), 10));
-            
+            List<Detection> detections = detectionRepository.findAll();
             return detections.stream()
                     .limit(10)
-                    .mapToInt(d -> {
-                        Long timestampMs = d.getTimestampMs();
-                        return timestampMs != null ? timestampMs.intValue() % 100 : 0;
-                    })
+                    .mapToInt(d -> d.getTimestampMs() != null ? d.getTimestampMs().intValue() % 100 : 0)
                     .toArray();
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getArrayData: {}", safeMessage, e);
-            return new int[]{45, 23, 78, 12, 90, 32, 56, 67, 89, 15}; // Datos por defecto
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getArrayData: {}", safeMessage, e);
-            return new int[]{45, 23, 78, 12, 90, 32, 56, 67, 89, 15}; // Datos por defecto
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getArrayData: {}", safeMessage, e);
-            return new int[]{45, 23, 78, 12, 90, 32, 56, 67, 89, 15}; // Datos por defecto
+            return new int[]{45, 23, 78, 12, 90, 32, 56, 67, 89, 15};
         }
     }
 
@@ -742,18 +469,9 @@ public class DetectionAnalysisService {
             children.add(lanes);
             root.put("children", children);
             
-            logger.debug("🌳 Datos de árbol generados");
             return root;
             
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getTreeData: {}", safeMessage, e);
-            return Map.of("value", "Error", "children", Collections.emptyList());
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getTreeData: {}", safeMessage, e);
             return Map.of("value", "Error", "children", Collections.emptyList());
         }
     }
@@ -761,50 +479,17 @@ public class DetectionAnalysisService {
     // Métodos auxiliares
     private Object[] getListStructureData() {
         try {
-            List<Detection> detections = detectionRepository.findTop50ByOrderByTimestampMsDesc();
-            logger.debug("🔗 Generando estructura de lista con {} detecciones", Math.min(detections.size(), 8));
-            
+            List<Detection> detections = detectionRepository.findAll();
             return detections.stream()
                     .limit(8)
                     .map(d -> {
                         Map<String, Object> item = new HashMap<>();
-                        Long id = d.getId();
-                        item.put("id", id != null ? id : 0L);
+                        item.put("id", d.getId() != null ? d.getId() : 0L);
                         item.put("date", d.getDate() != null ? d.getDate() : "N/A");
                         return item;
                     })
                     .toArray();
-        } catch (org.springframework.dao.DataAccessException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de acceso a datos";
-            logger.error("❌ Error de BD en getListStructureData: {}", safeMessage, e);
-            // Datos por defecto
-            return IntStream.range(1, 9)
-                    .mapToObj(i -> {
-                        Map<String, Object> item = new HashMap<>();
-                        item.put("id", (long) i);
-                        item.put("date", "2025-05-0" + i + " 12:00:00");
-                        return item;
-                    })
-                    .toArray();
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.error("❌ Error de ejecución en getListStructureData: {}", safeMessage, e);
-            // Datos por defecto
-            return IntStream.range(1, 9)
-                    .mapToObj(i -> {
-                        Map<String, Object> item = new HashMap<>();
-                        item.put("id", (long) i);
-                        item.put("date", "2025-05-0" + i + " 12:00:00");
-                        return item;
-                    })
-                    .toArray();
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.error("❌ Error general en getListStructureData: {}", safeMessage, e);
-            // Datos por defecto
             return IntStream.range(1, 9)
                     .mapToObj(i -> {
                         Map<String, Object> item = new HashMap<>();
@@ -816,10 +501,22 @@ public class DetectionAnalysisService {
         }
     }
 
+    private boolean isValidJson(String json) {
+        return json != null && !json.trim().isEmpty() && !json.equals("{}") && !json.equals("null");
+    }
+
+    private <T> T parseJson(String json, TypeReference<T> typeRef) {
+        try {
+            return objectMapper.readValue(json, typeRef);
+        } catch (Exception e) {
+            logger.debug("⚠️ Error parsing JSON: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private String extractHourFromDate(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) return null;
         try {
-            // Extraer la hora del formato "2025-05-08 21:07:12"
             String[] parts = dateStr.split(" ");
             if (parts.length > 1) {
                 String timePart = parts[1];
@@ -828,45 +525,50 @@ public class DetectionAnalysisService {
                     return timeParts[0] + ":00";
                 }
             }
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error de ejecución";
-            logger.debug("⚠️ Error de ejecución extrayendo hora de fecha '{}': {}", dateStr, safeMessage);
         } catch (Exception e) {
-            String errorMessage = e.getMessage();
-            String safeMessage = errorMessage != null ? errorMessage : "Error desconocido";
-            logger.debug("⚠️ Error general extrayendo hora de fecha '{}': {}", dateStr, safeMessage);
+            logger.debug("⚠️ Error extrayendo hora de fecha '{}': {}", dateStr, e.getMessage());
         }
         return null;
     }
 
-    private String getDayType() {
-        // Simplificado: retorna "weekday" o "weekend"
-        // En una implementación real, se analizaría la fecha
-        return "weekday";
+    private void addZeroCounts(List<Integer> carCounts, List<Integer> busCounts, List<Integer> truckCounts) {
+        carCounts.add(0);
+        busCounts.add(0);
+        truckCounts.add(0);
     }
 
-    // Métodos para datos por defecto cuando no hay datos en la BD
+    private void addZeroSpeeds(List<Double> lane1Speeds, List<Double> lane2Speeds, List<Double> lane3Speeds) {
+        lane1Speeds.add(0.0);
+        lane2Speeds.add(0.0);
+        lane3Speeds.add(0.0);
+    }
+
+    private int getTotalVehicleCount(Map<String, Integer> totals) {
+        return totals.values().stream().filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+    }
+
+    // Métodos para datos por defecto
+    private Map<String, Integer> getDefaultTotals() {
+        return Map.of("car", 0, "bus", 0, "truck", 0);
+    }
+
     private Map<String, Object> getDefaultTotalVolumeData() {
-        logger.debug("📊 Usando datos por defecto para volumen total");
         Map<String, Object> defaultData = new HashMap<>();
-        defaultData.put("total", Map.of("car", 0, "bus", 0, "truck", 0));
+        defaultData.put("total", getDefaultTotals());
         defaultData.put("hourly", Map.of("08:00", 0, "09:00", 0, "10:00", 0));
         defaultData.put("daily", Map.of("weekday", 0, "weekend", 0));
         return defaultData;
     }
 
     private Map<String, Map<String, Integer>> getDefaultLaneData() {
-        logger.debug("🛣️ Usando datos por defecto para carriles");
         Map<String, Map<String, Integer>> defaultData = new HashMap<>();
-        defaultData.put("lane_1", Map.of("car", 0, "bus", 0, "truck", 0));
-        defaultData.put("lane_2", Map.of("car", 0, "bus", 0, "truck", 0));
-        defaultData.put("lane_3", Map.of("car", 0, "bus", 0, "truck", 0));
+        defaultData.put("lane_1", getDefaultTotals());
+        defaultData.put("lane_2", getDefaultTotals());
+        defaultData.put("lane_3", getDefaultTotals());
         return defaultData;
     }
 
     private Map<String, Integer> getDefaultHourlyPattern() {
-        logger.debug("⏰ Usando datos por defecto para patrones horarios");
         Map<String, Integer> defaultPattern = new HashMap<>();
         for (int i = 0; i < 24; i++) {
             defaultPattern.put(String.format("%02d:00", i), 0);
@@ -875,25 +577,14 @@ public class DetectionAnalysisService {
     }
 
     private Map<String, Double> getDefaultSpeedData() {
-        logger.debug("🏎️ Usando datos por defecto para velocidades");
-        Map<String, Double> defaultSpeeds = new HashMap<>();
-        defaultSpeeds.put("lane_1", 0.0);
-        defaultSpeeds.put("lane_2", 0.0);
-        defaultSpeeds.put("lane_3", 0.0);
-        return defaultSpeeds;
+        return Map.of("lane_1", 0.0, "lane_2", 0.0, "lane_3", 0.0);
     }
 
     private Map<String, Double> getDefaultDominanceData() {
-        logger.debug("🚙 Usando datos por defecto para dominancia");
-        Map<String, Double> defaultDominance = new HashMap<>();
-        defaultDominance.put("car", 0.0);
-        defaultDominance.put("bus", 0.0);
-        defaultDominance.put("truck", 0.0);
-        return defaultDominance;
+        return Map.of("car", 0.0, "bus", 0.0, "truck", 0.0);
     }
 
     private Map<String, Object> getDefaultTrafficEvolution() {
-        logger.debug("📈 Usando datos por defecto para evolución del tráfico");
         Map<String, Object> defaultEvolution = new HashMap<>();
         defaultEvolution.put("timestamps", Arrays.asList("08:00", "09:00", "10:00"));
         defaultEvolution.put("car", Arrays.asList(0, 0, 0));
@@ -903,7 +594,6 @@ public class DetectionAnalysisService {
     }
 
     private Map<String, Object> getDefaultSpeedEvolution() {
-        logger.debug("🏎️ Usando datos por defecto para evolución de velocidad");
         Map<String, Object> defaultEvolution = new HashMap<>();
         defaultEvolution.put("timestamps", Arrays.asList("08:00", "09:00", "10:00"));
         defaultEvolution.put("lane_1", Arrays.asList(0.0, 0.0, 0.0));
